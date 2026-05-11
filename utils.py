@@ -6,9 +6,12 @@ import os
 import random
 import math
 import dmc2gym
-import metaworld
-import metaworld.envs.mujoco.env_dict as _env_dict
-
+#import metaworld
+#import metaworld.envs.mujoco.env_dict as _env_dict
+try:
+    import metaworld.envs.mujoco.env_dict as _env_dict
+except Exception:
+    _env_dict = None
 from collections import deque
 from gym.wrappers.time_limit import TimeLimit
 from rlkit.envs.wrappers import NormalizedBoxEnv
@@ -18,6 +21,28 @@ from torch import nn
 from torch import distributions as pyd
     
 def make_env(cfg):
+    """Helper function to create dm_control or gym environment."""
+    if cfg.env.startswith('gym_'):
+        env_id = cfg.env[len('gym_'):]
+        env = gym.make(env_id)
+        if hasattr(env, 'seed'):
+            env.seed(cfg.seed)
+        if hasattr(env.action_space, 'seed'):
+            env.action_space.seed(cfg.seed)
+        if hasattr(env.observation_space, 'seed'):
+            env.observation_space.seed(cfg.seed)
+
+        if not isinstance(env.action_space, gym.spaces.Box):
+            raise ValueError(f"PEBBLE + SAC requires continuous actions (Box space), got: {type(env.action_space)}")
+
+        max_ep = getattr(cfg, 'max_episode_steps', None)
+        if max_ep is not None:
+            # Unwrap existing TimeLimit, then re-wrap with the new limit
+            inner = env.env if isinstance(env, TimeLimit) else env
+            env = TimeLimit(inner, max_episode_steps=int(max_ep))
+
+        return env
+
     """Helper function to create dm_control environment"""
     if cfg.env == 'ball_in_cup_catch':
         domain_name = 'ball_in_cup'
@@ -35,6 +60,23 @@ def make_env(cfg):
     assert env.action_space.high.max() <= 1
 
     return env
+
+def get_env_horizon(env, default=None):
+    max_steps = getattr(env, '_max_episode_steps', None)
+
+    if max_steps is None and getattr(env, 'spec', None) is not None:
+        max_steps = getattr(env.spec, 'max_episode_steps', None)
+
+    if max_steps is None and hasattr(env, 'env'):
+        inner_env = getattr(env, 'env')
+        max_steps = getattr(inner_env, '_max_episode_steps', None)
+        if max_steps is None and getattr(inner_env, 'spec', None) is not None:
+            max_steps = getattr(inner_env.spec, 'max_episode_steps', None)
+
+    if max_steps is None:
+        return default
+
+    return int(max_steps)
 
 def ppo_make_env(env_id, seed):
     """Helper function to create dm_control environment"""

@@ -35,7 +35,7 @@ replay_buffer_capacity: ${num_train_steps}
 # evaluation config
 eval_frequency: 10000
 num_eval_episodes: 10
-device: cuda
+device: cpu
 
 # logger
 log_frequency: 10000
@@ -44,11 +44,41 @@ log_save_tb: true
 # video recorder
 save_video: false
 
+# save segment query videos for offline human labeling (renders at query time, no memory overhead)
+save_query_videos: false
+
+# online web labeling settings (feed_type=7)
+web_poll_interval: 2.0
+web_timeout: 3600
+
+# checkpoint at end of feedback collection so a separate job can resume the
+# pure-RL portion. Setting checkpoint_at_max_feedback=true makes this run save
+# the full training state as soon as total_feedback >= max_feedback.
+checkpoint_at_max_feedback: false
+# Whether to also exit the training loop after that checkpoint is written.
+# True (default) = split workflow: stop here, resume RL via run_cc_lunar_resume.
+# False = unified-interactive workflow: save the checkpoint mid-run but keep
+# training to num_train_steps. Lets the same job collect labels AND finish RL.
+exit_after_max_feedback_checkpoint: true
+# Path to a checkpoint.pt produced by a previous run. When set, training resumes
+# from that state (same log dir, same TB file, append mode for csvs).
+resume_from: null
+# Path to a previously saved online_queries/ directory. When set, web_sampling
+# reads the saved segment metadata + labels from disk instead of rendering and
+# waiting for a human. Used to recover from a crashed run without re-labeling.
+# Falls through to live web_sampling for any batch_NNN that's not on disk.
+web_replay_from: null
+
+# path to offline human labels pickle (from label_web.py or human_label.py)
+# when set, loads these labels instead of generating queries
+human_labels_path: null
+
 # setups
 seed: 1
 
 # Environment
 env: dog_stand
+max_episode_steps: null
 gradient_update: 1
 
 # hydra configuration

@@ -38,6 +38,16 @@ AGENT_TRAIN_FORMAT = {
         ('alpha_value', 'TVAL', 'float'),
         ('actor_entropy', 'AENT', 'float'),
         ('bc_loss', 'BCLOSS', 'float'),
+        # SAC-internal scalars logged by agent.update; listed here so the CSV
+        # schema is identical across fresh-write (unified) and append-into-
+        # fresh-dir (compare/resume) runs.
+        ('actor_target_entropy', 'ATENT', 'float'),
+        ('critic_entropy', 'CENT', 'float'),
+        ('critic_entropy_max', 'CENTMAX', 'float'),
+        ('critic_entropy_min', 'CENTMIN', 'float'),
+        ('critic_norm_entropy', 'CNENT', 'float'),
+        ('critic_norm_entropy_max', 'CNENTMAX', 'float'),
+        ('critic_norm_entropy_min', 'CNENTMIN', 'float'),
     ],
     'ppo': [
         ('batch_reward', 'BR', 'float'),
@@ -59,16 +69,64 @@ class AverageMeter(object):
 
 
 class MetersGroup(object):
-    def __init__(self, file_name, formating):
-        self._csv_file_name = self._prepare_file(file_name, 'csv')
+    def __init__(self, file_name, formating, append=False):
+        self._csv_file_name = self._prepare_file(file_name, 'csv', append=append)
         self._formating = formating
         self._meters = defaultdict(AverageMeter)
-        self._csv_file = open(self._csv_file_name, 'w')
+        self._append = append
+        # When appending: skip writing a new header AND lock fieldnames to the
+        # existing header. Otherwise the first dump on resume (which has only
+        # 'duration' logged) would lock fieldnames to a tiny subset and reject
+        # all later rows. Also truncate any partial last line written by a
+        # killed previous process.
+        self._existing_fieldnames = None
+        self._header_written = False
+        if append and os.path.exists(self._csv_file_name) \
+                and os.path.getsize(self._csv_file_name) > 0:
+            self._truncate_partial_last_line(self._csv_file_name)
+            with open(self._csv_file_name, 'r', newline='') as f:
+                reader = csv.reader(f)
+                try:
+                    header = next(reader)
+                    self._existing_fieldnames = header
+                    self._header_written = True
+                except StopIteration:
+                    pass
+        elif append:
+            # Resume into a fresh work_dir: no train.csv yet, but we still need
+            # to lock the full schema up front so the first dump (which has
+            # only 'duration' populated) doesn't pin DictWriter to a tiny
+            # subset and crash on the next dump. Derive from the format spec
+            # plus 'step' which dump() always adds. Sorted for determinism.
+            fieldnames = {k for (k, _, _) in formating}
+            fieldnames.add('step')
+            self._existing_fieldnames = sorted(fieldnames)
+        self._csv_file = open(self._csv_file_name, 'a' if append else 'w')
         self._csv_writer = None
 
-    def _prepare_file(self, prefix, suffix):
+    @staticmethod
+    def _truncate_partial_last_line(path):
+        # If the last line lacks a trailing newline, the previous process died
+        # mid-write; drop it so DictWriter starts on a clean line.
+        with open(path, 'rb') as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            if size == 0:
+                return
+            f.seek(size - 1)
+            if f.read(1) == b'\n':
+                return
+        with open(path, 'rb') as f:
+            data = f.read()
+        last_nl = data.rfind(b'\n')
+        if last_nl == -1:
+            return  # whole file is one partial line; leave it
+        with open(path, 'wb') as f:
+            f.write(data[:last_nl + 1])
+
+    def _prepare_file(self, prefix, suffix, append=False):
         file_name = f'{prefix}.{suffix}'
-        if os.path.exists(file_name):
+        if (not append) and os.path.exists(file_name):
             os.remove(file_name)
         return file_name
 
@@ -88,10 +146,21 @@ class MetersGroup(object):
 
     def _dump_to_csv(self, data):
         if self._csv_writer is None:
+            if self._existing_fieldnames is not None:
+                # Append mode: reuse existing header. extrasaction='ignore' lets
+                # us tolerate a transient first dump that's missing some fields.
+                fieldnames = self._existing_fieldnames
+                extras = 'ignore'
+            else:
+                fieldnames = sorted(data.keys())
+                extras = 'raise'
             self._csv_writer = csv.DictWriter(self._csv_file,
-                                              fieldnames=sorted(data.keys()),
-                                              restval=0.0)
-            self._csv_writer.writeheader()
+                                              fieldnames=fieldnames,
+                                              restval=0.0,
+                                              extrasaction=extras)
+            if not self._header_written:
+                self._csv_writer.writeheader()
+                self._header_written = True
         self._csv_writer.writerow(data)
         self._csv_file.flush()
 
@@ -130,12 +199,13 @@ class Logger(object):
                  log_dir,
                  save_tb=False,
                  log_frequency=10000,
-                 agent='sac'):
+                 agent='sac',
+                 append=False):
         self._log_dir = log_dir
         self._log_frequency = log_frequency
         if save_tb:
             tb_dir = os.path.join(log_dir, 'tb')
-            if os.path.exists(tb_dir):
+            if (not append) and os.path.exists(tb_dir):
                 try:
                     shutil.rmtree(tb_dir)
                 except:
@@ -148,9 +218,9 @@ class Logger(object):
         assert agent in AGENT_TRAIN_FORMAT
         train_format = COMMON_TRAIN_FORMAT + AGENT_TRAIN_FORMAT[agent]
         self._train_mg = MetersGroup(os.path.join(log_dir, 'train'),
-                                     formating=train_format)
+                                     formating=train_format, append=append)
         self._eval_mg = MetersGroup(os.path.join(log_dir, 'eval'),
-                                    formating=COMMON_EVAL_FORMAT)
+                                    formating=COMMON_EVAL_FORMAT, append=append)
 
     def _should_log(self, step, log_frequency):
         log_frequency = log_frequency or self._log_frequency
@@ -166,9 +236,15 @@ class Logger(object):
             frames = frames.unsqueeze(0)
             self._sw.add_video(key, frames, step, fps=30)
 
+#    def _try_sw_log_histogram(self, key, histogram, step):
+#        if self._sw is not None:
+#            self._sw.add_histogram(key, histogram, step)
+#
     def _try_sw_log_histogram(self, key, histogram, step):
-        if self._sw is not None:
+        try:
             self._sw.add_histogram(key, histogram, step)
+        except Exception:
+            return
 
     def log(self, key, value, step, n=1, log_frequency=1):
         if not self._should_log(step, log_frequency):

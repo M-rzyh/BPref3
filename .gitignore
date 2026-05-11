@@ -1,3 +1,4 @@
+# --- inherited from upstream rll-research/BPref ---
 *.swp
 *.pyc
 *.pkl
@@ -55,3 +56,39 @@ figures
 *.txt
 figure/
 data/
+
+# --- additions for the M-rzyh/BPref3 fork ---
+
+# Claude / agent local config
+.claude/
+
+# Big installer binary
+Miniconda3-latest-Linux-x86_64.sh
+
+# More log forms
+*.log
+run.log
+train.log
+tb_*.log
+
+# SLURM stdout/stderr (logs/ already covered above)
+*.out
+*.err
+
+# Output dirs
+output/
+
+# WIP / ad-hoc local dirs and files
+repro/
+continuing
+es
+test_render_fix.py
+test_render_job.sh
+
+# Training artifacts (large)
+*.mp4
+*.pt
+
+# Local-only test artifacts
+test_render_*.mp4
+test_render_*.out

@@ -24,7 +24,17 @@ def make(
     # shorten episode length
     max_episode_steps = (episode_length + frame_skip - 1) // frame_skip
 
-    if not env_id in gym.envs.registry.env_specs:
+#    if env_id not in gym.envs.registry:
+    from gym.error import Error as GymError
+
+    try:
+        gym.spec(env_id)      # exists => registered
+        already_registered = True
+    except GymError:
+        already_registered = False
+
+    if not already_registered:
+    # keep the existing gym.register(...) block exactly as-is
         task_kwargs = {}
         if seed is not None:
             task_kwargs['random'] = seed
