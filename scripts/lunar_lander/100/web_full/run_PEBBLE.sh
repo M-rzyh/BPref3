@@ -6,15 +6,16 @@
 # comparison) but KEEPS TRAINING all the way to num_train_steps. One job does
 # both label collection and the pure-RL phase.
 
-# Overridable per submission; the defaults reproduce the earlier runs exactly.
+# Defaults for the 100-label human study (2026-09): 1000-step episodes, batch 10,
+# reward_update 50 -> 10 live labeling sessions of 10 pairs each.
 # SEEDS is space-separated, but for online labeling submit ONE seed per job --
 # every seed in a job needs its own live labeling session.
-MAX_EP_STEPS=${MAX_EP_STEPS:-400}
-MAX_FEEDBACK=${MAX_FEEDBACK:-100}
 # reward_batch = pairs shown per labeling session (and per web batch).
 # reward_update = reward-model training rounds after each session (independent).
-REWARD_BATCH=${REWARD_BATCH:-25}
-REWARD_UPDATE=${REWARD_UPDATE:-25}
+MAX_EP_STEPS=${MAX_EP_STEPS:-1000}
+MAX_FEEDBACK=${MAX_FEEDBACK:-100}
+REWARD_BATCH=${REWARD_BATCH:-10}
+REWARD_UPDATE=${REWARD_UPDATE:-50}
 
 # for seed in 12345 23451 78906 89067 6789; do
 for seed in ${SEEDS:-12345}; do

@@ -3,6 +3,11 @@ defaults:
 
 #env
 env: dog_stand
+# Episode time limit for the gym_* branch of utils.make_env. null = keep the
+# environment's registry default (previous behaviour). Set e.g. 1000 to match the
+# PEBBLE LunarLander runs. Declared here because @hydra.main(strict=True) rejects
+# CLI keys that are absent from the config.
+max_episode_steps: null
 
 # Basic setup
 experiment: sac

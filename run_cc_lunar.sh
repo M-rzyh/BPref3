@@ -45,7 +45,12 @@ start_time=`date +%s`
 
 # 4. Run
 cd ~/BPref3 || exit 1
-./scripts/lunar_lander/500/oracle/run_PEBBLE.sh
+# Which inner script to run. Default = the original 500-folder oracle script, so
+# existing submissions are unchanged. For the 100-label study pass
+# RUN_SCRIPT=./scripts/lunar_lander/100/oracle/run_PEBBLE.sh
+RUN_SCRIPT=${RUN_SCRIPT:-./scripts/lunar_lander/500/oracle/run_PEBBLE.sh}
+echo "RUN_SCRIPT=$RUN_SCRIPT"
+"$RUN_SCRIPT"
 
 end_time=`date +%s`
 echo "run time $((end_time-start_time)) sec"

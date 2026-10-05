@@ -21,14 +21,15 @@ FEED_TYPE=${1:-0}
 # Override seed list with SEEDS env var (space-separated). Default: all 5.
 SEEDS_DEFAULT="12345 23451 78906 89067 6789"
 
-# Overridable per submission; the defaults reproduce the earlier runs exactly.
-MAX_EP_STEPS=${MAX_EP_STEPS:-400}
-MAX_FEEDBACK=${MAX_FEEDBACK:-100}
+# Defaults for the 100-label budget study (2026-09): 1000-step episodes,
+# batch 10, reward_update 50. All overridable per submission.
 # reward_batch = pairs collected per query session.
 # reward_update = reward-model training rounds after each session (independent of
 # the batch size; upstream uses 50 for DMC, 10 for Metaworld).
-REWARD_BATCH=${REWARD_BATCH:-25}
-REWARD_UPDATE=${REWARD_UPDATE:-25}
+MAX_EP_STEPS=${MAX_EP_STEPS:-1000}
+MAX_FEEDBACK=${MAX_FEEDBACK:-100}
+REWARD_BATCH=${REWARD_BATCH:-10}
+REWARD_UPDATE=${REWARD_UPDATE:-50}
 
 for seed in ${SEEDS:-$SEEDS_DEFAULT}; do
 # for seed in 12345; do
